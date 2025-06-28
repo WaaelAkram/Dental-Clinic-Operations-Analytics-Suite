@@ -1,0 +1,33 @@
+# Compiled assets
+/public/hot
+/public/storage
+/public/build
+
+# Sensitive Environment Files
+.env
+.env.backup
+.env.testing
+
+# Vendor directory
+/vendor/
+
+# Node Modules
+/node_modules/
+
+# Log files
+/storage/logs/*.log
+!/storage/logs/.gitignore
+
+# Framework directories
+/storage/framework/
+/storage/app/
+
+# WhatsApp session and cache files
+/.wwebjs_auth/
+/.wwebjs_cache/
+
+# IDE/OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
