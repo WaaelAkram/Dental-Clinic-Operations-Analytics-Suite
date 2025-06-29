@@ -340,17 +340,17 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
      * Finds patients whose last appointment was approximately one year ago.
      * It returns essential details needed for the marketing campaign.
      */
-    public function getLapsedPatients(int $daysAgoStart = 365, int $daysAgoEnd = 395): Collection
+           public function getLapsedPatients(int $daysAgoStart = 365): Collection
     {
-        $startDate = now()->subDays($daysAgoEnd)->format('Y-m-d');
-        $endDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+        // The single cutoff date. We will find everyone whose last visit was on or before this date.
+        $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
 
-        // This query finds the last appointment date for each patient
-        // and filters for those whose last visit was within our target window.
+        // The query is changed to use a single <= condition.
+        // CRITICAL: We also add an ORDER BY clause.
         $sql = "
             SELECT 
                 p.id, 
-                p.pt_name as full_name, 
+                (p.fname_a + ' ' + p.sname_a + ' ' + p.lname_a) as full_name, 
                 p.mobile
             FROM patient p
             JOIN (
@@ -358,10 +358,11 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
                 FROM appointment
                 GROUP BY pt_id
             ) as last_app ON p.id = last_app.pt_id
-            WHERE last_app.last_appointment_date >= ? AND last_app.last_appointment_date <= ?
+            WHERE last_app.last_appointment_date <= ?
+            ORDER BY last_app.last_appointment_date DESC
         ";
 
-        return collect(DB::connection('mssql_clinic')->select($sql, [$startDate, $endDate]));
+        return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
     }
     /**
  * Finds the first new appointment for a given list of patient IDs
