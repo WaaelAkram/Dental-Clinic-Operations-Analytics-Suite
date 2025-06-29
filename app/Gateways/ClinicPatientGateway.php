@@ -336,4 +336,67 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
 
         return $result->total_revenue / $result->unique_patients;
     }
+    /**
+     * Finds patients whose last appointment was approximately one year ago.
+     * It returns essential details needed for the marketing campaign.
+     */
+    public function getLapsedPatients(int $daysAgoStart = 365, int $daysAgoEnd = 395): Collection
+    {
+        $startDate = now()->subDays($daysAgoEnd)->format('Y-m-d');
+        $endDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+
+        // This query finds the last appointment date for each patient
+        // and filters for those whose last visit was within our target window.
+        $sql = "
+            SELECT 
+                p.id, 
+                p.pt_name as full_name, 
+                p.mobile
+            FROM patient p
+            JOIN (
+                SELECT pt_id, MAX(CONVERT(date, app_dt)) as last_appointment_date
+                FROM appointment
+                GROUP BY pt_id
+            ) as last_app ON p.id = last_app.pt_id
+            WHERE last_app.last_appointment_date >= ? AND last_app.last_appointment_date <= ?
+        ";
+
+        return collect(DB::connection('mssql_clinic')->select($sql, [$startDate, $endDate]));
+    }
+    /**
+ * Finds the first new appointment for a given list of patient IDs
+ * that occurred on or after a specific start date.
+ */
+public function getFirstAppointmentsForPatientsAfter(array $patientIds, Carbon\Carbon $startDate): Collection
+{
+    if (empty($patientIds)) {
+        return collect();
+    }
+
+    $patientIdString = implode(',', $patientIds);
+    $startDateString = $startDate->format('Y-m-d');
+
+    // This more complex query is optimized to find only the EARLIEST new appointment
+    // for each patient after the given date, which is exactly what we need for tracking conversions.
+    $sql = "
+        WITH NumberedAppointments AS (
+            SELECT
+                id as new_appointment_id,
+                pt_id,
+                CONVERT(date, app_dt) as new_appointment_date,
+                ROW_NUMBER() OVER(PARTITION BY pt_id ORDER BY app_dt ASC) as rn
+            FROM appointment
+            WHERE pt_id IN ({$patientIdString})
+              AND CONVERT(date, app_dt) >= ?
+        )
+        SELECT
+            new_appointment_id,
+            pt_id,
+            new_appointment_date
+        FROM NumberedAppointments
+        WHERE rn = 1
+    ";
+
+    return collect(DB::connection('mssql_clinic')->select($sql, [$startDateString]));
+}
 }

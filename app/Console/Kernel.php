@@ -7,20 +7,25 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-    protected function schedule(Schedule $schedule): void
-    {
-        // ... any other commands ...
+   // In app/Console/Kernel.php
 
-        // THIS IS THE FIX:
-        $schedule->command('reminders:send')
-                 ->everyFifteenMinutes()
-                 ->withoutOverlapping(); // <-- ADD THIS LINE
+protected function schedule(Schedule $schedule): void
+{
+    // === CONSOLIDATED TASKS ===
+  // System 1: Appointment Reminders
+    $schedule->command('reminders:send')
+             ->everyFiveMinutes() // <-- CHANGED
+             ->withoutOverlapping();
 
-        // Your feedback command, when added, should also have this
-        // $schedule->command('feedback:send')->hourly()->withoutOverlapping();
+    // System 2: Feedback Requests
+    $schedule->command('feedback:send')
+             ->everyFiveMinutes() // <-- CHANGED
+             ->withoutOverlapping();
 
-        // ...
-    }
 
-    // ...
+    // System 3: Lapsed Patient Marketing
+   $schedule->command('marketing:select-daily-batch')->dailyAt('02:00')->withoutOverlapping();
+   $schedule->command('marketing:queue-staged-messages')->dailyAt('02:05')->withoutOverlapping();
+   $schedule->command('marketing:track-conversions')->dailyAt('03:00')->withoutOverlapping();
+}
 }

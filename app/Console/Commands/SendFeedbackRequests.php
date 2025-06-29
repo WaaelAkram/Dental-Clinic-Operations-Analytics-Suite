@@ -15,7 +15,7 @@ class SendFeedbackRequests extends Command
     protected $description = 'Finds appointments that recently finished and sends feedback requests.';
 
     // --- REPLACE THE ENTIRE HANDLE METHOD WITH THIS ---
-    public function handle(ClinicPatientGateway $gateway): int
+       public function handle(ClinicPatientGateway $gateway): int
     {
         $delayHoursStart = config('feedback.delay_hours_start', 2);
         $delayHoursEnd = config('feedback.delay_hours_end', 3);
@@ -38,7 +38,7 @@ class SendFeedbackRequests extends Command
             return self::SUCCESS;
         }
 
-        // Step 2: Filter out appointments that have already been processed (by specific appointment_id)
+        // Step 2: Filter out appointments that have already been processed
         $appointmentIdsToCheck = $eligibleAppointments->pluck('appointment_id')->all();
         $sentAppointmentIds = SentFeedback::whereIn('appointment_id', $appointmentIdsToCheck)->pluck('appointment_id')->all();
         $unprocessedAppointments = $eligibleAppointments->whereNotIn('appointment_id', $sentAppointmentIds);
@@ -48,9 +48,9 @@ class SendFeedbackRequests extends Command
             return self::SUCCESS;
         }
 
-        // Step 3: Filter out patients who have been contacted recently (by mobile number)
+        // Step 3: Filter out patients who have been contacted recently
         $cooldownMonths = config('feedback.resend_cooldown_months', 4);
-        $finalAppointmentsToSend = $unprocessedAppointments; // Start with the unprocessed list
+        $finalAppointmentsToSend = $unprocessedAppointments; 
 
         if ($cooldownMonths > 0 && $unprocessedAppointments->isNotEmpty()) {
             $mobileNumbers = $unprocessedAppointments->pluck('mobile')->unique()->filter();
@@ -80,29 +80,35 @@ class SendFeedbackRequests extends Command
             return self::SUCCESS;
         }
         
-        // Step 4: Loop over the final list and dispatch jobs
+        // --- THIS IS THE MODIFIED SECTION ---
+        // Step 4: Loop over the final list and dispatch jobs with staggered delays
         $dispatchedCount = 0;
+        $totalDelaySeconds = 0; // Initialize total delay
+        
         foreach ($finalAppointmentsToSend as $appointment) {
             if (empty($appointment->mobile)) {
                 Log::warning("Skipping feedback request for appointment #{$appointment->appointment_id} due to missing mobile number.");
                 continue;
             }
 
+            // For every message after the first one, add a random delay.
             if ($dispatchedCount > 0) {
-                $delaySeconds = rand(40, 120);
-                $this->info("... waiting for {$delaySeconds} seconds before next message...");
-                sleep($delaySeconds);
+                $totalDelaySeconds += rand(40, 120);
             }
             
-            SendFeedbackRequest::dispatch($appointment);
+            // Dispatch the job with the calculated cumulative delay.
+            SendFeedbackRequest::dispatch($appointment)->delay(now()->addSeconds($totalDelaySeconds));
+            
+            $this->info(" -> Queued feedback request for appointment #{$appointment->appointment_id}. Will be sent in ~{$totalDelaySeconds} seconds.");
             $dispatchedCount++;
         }
+        // --- END OF MODIFIED SECTION ---
 
         // Step 5: Log the final results
         $logMessage = "Feedback Check: Found {$eligibleAppointments->count()} eligible. " .
                       "Filtered to {$unprocessedAppointments->count()} unprocessed appointments. " .
                       "After cooldown, {$finalAppointmentsToSend->count()} are ready to message. " .
-                      "Dispatched {$dispatchedCount} new jobs.";
+                      "Dispatched {$dispatchedCount} new jobs with staggered delays.";
         $this->info($logMessage);
         Log::info($logMessage);
 

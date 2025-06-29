@@ -15,7 +15,7 @@ class SendAppointmentReminders extends Command
     protected $signature = 'reminders:send';
     protected $description = 'Finds all upcoming appointments within the reminder window and sends notifications.';
 
-    public function handle(ClinicPatientGateway $gateway): int
+        public function handle(ClinicPatientGateway $gateway): int
     {
         $reminderWindows = config('reminders.windows');
         $now = now();
@@ -45,6 +45,8 @@ class SendAppointmentReminders extends Command
         }
 
         $dispatchedCount = 0;
+        $totalDelaySeconds = 0; // <-- THIS IS THE CRITICAL MISSING LINE
+
         foreach ($unsentAppointments as $appointment) {
             
             if (empty($appointment->mobile)) {
@@ -56,18 +58,15 @@ class SendAppointmentReminders extends Command
             $appointmentTime = Carbon::parse($appointment->appointment_date . ' ' . $appointment->appointment_time);
             $creationTime = Carbon::parse($appointment->created_at);
 
-            // --- THIS IS THE NEW LOGIC ---
-            // Check if the appointment was created less than an hour before its start time
+            // Check if the appointment was created less than two hours before its start time
             if ($creationTime->diffInMinutes($appointmentTime) < 120) {
                 $this->line(".. Skipping last-minute appointment #{$appointment->appointment_id}. Booked too close to appointment time.");
-                continue; // Skip this appointment and go to the next one
+                continue; 
             }
-            // --- END OF NEW LOGIC ---
 
+            // For every message after the first one, add a random delay.
             if ($dispatchedCount > 0) {
-                $delaySeconds = rand(40, 120);
-                $this->info("... waiting for {$delaySeconds} seconds before next message...");
-                sleep($delaySeconds);
+                $totalDelaySeconds += rand(40, 120); 
             }
 
             $status = $appointment->app_status;
@@ -77,13 +76,15 @@ class SendAppointmentReminders extends Command
             $specificWindow = $reminderWindows[$status];
 
             if ($appointmentTime->isBetween($now, $now->copy()->addMinutes($specificWindow))) {
-                SendSingleReminder::dispatch($appointment);
+                // Dispatch the job with the calculated cumulative delay.
+                SendSingleReminder::dispatch($appointment)->delay(now()->addSeconds($totalDelaySeconds));
+                
                 $dispatchedCount++;
-                $this->line(" -> Queued reminder for appointment #{$appointment->appointment_id} (Status: {$status}, Window: {$specificWindow} mins)");
+                $this->line(" -> Queued reminder for appointment #{$appointment->appointment_id} (Status: {$status}). Will be sent in ~{$totalDelaySeconds} seconds.");
             }
         }
 
-        $logMessage = "Checked {$appointmentsInMaxWindow->count()} appointments. Dispatched {$dispatchedCount} new reminder jobs.";
+        $logMessage = "Checked {$appointmentsInMaxWindow->count()} appointments. Dispatched {$dispatchedCount} new reminder jobs with staggered delays.";
         $this->info($logMessage);
         Log::info($logMessage);
 
