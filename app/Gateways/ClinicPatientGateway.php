@@ -336,4 +336,41 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
 
         return $result->total_revenue / $result->unique_patients;
     }
+    public function getLapsedPatients(int $daysAgoStart = 365): \Illuminate\Support\Collection
+{
+    $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+    $sql = "
+        SELECT 
+            p.id, 
+            (p.fname_a + ' ' + p.sname_a + ' ' + p.lname_a) as full_name, 
+            p.mobile
+        FROM patient p
+        JOIN (
+            SELECT pt_id, MAX(CONVERT(date, app_dt)) as last_appointment_date
+            FROM appointment
+            GROUP BY pt_id
+        ) as last_app ON p.id = last_app.pt_id
+        WHERE last_app.last_appointment_date <= ?
+        ORDER BY last_app.last_appointment_date DESC
+    ";
+    return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
+}
+
+public function getFirstAppointmentsForPatientsAfter(array $patientIds, \Carbon\Carbon $startDate): \Illuminate\Support\Collection
+{
+    if (empty($patientIds)) { return collect(); }
+    $patientIdString = implode(',', $patientIds);
+    $startDateString = $startDate->format('Y-m-d');
+    $sql = "
+        WITH NumberedAppointments AS (
+            SELECT id as new_appointment_id, pt_id, CONVERT(date, app_dt) as new_appointment_date,
+                   ROW_NUMBER() OVER(PARTITION BY pt_id ORDER BY app_dt ASC) as rn
+            FROM appointment
+            WHERE pt_id IN ({$patientIdString}) AND CONVERT(date, app_dt) >= ?
+        )
+        SELECT new_appointment_id, pt_id, new_appointment_date
+        FROM NumberedAppointments WHERE rn = 1
+    ";
+    return collect(DB::connection('mssql_clinic')->select($sql, [$startDateString]));
+}
 }
