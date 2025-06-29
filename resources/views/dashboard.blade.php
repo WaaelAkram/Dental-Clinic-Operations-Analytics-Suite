@@ -25,10 +25,8 @@
             {{-- Manual Broadcast Card --}}
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">Manual Message Broadcast</h3>
-                    <p class="text-sm text-gray-600 mb-4">
-                        Paste a list of numbers (separated by spaces, commas, or new lines) to send a one-time message. Numbers on the exclusion list will be skipped automatically.
-                    </p>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">Message Broadcast</h3>
+                    
                     <form method="POST" action="{{ route('marketing.manual.send') }}" class="mt-4">
                         @csrf
                         <div class="space-y-4">
@@ -45,7 +43,7 @@
                         </div>
                         <div class="flex justify-end mt-4">
                             <x-primary-button>
-                                {{ __('Queue Manual Broadcast') }}
+                                {{ __('Start Broadcast') }}
                             </x-primary-button>
                         </div>
                     </form>
