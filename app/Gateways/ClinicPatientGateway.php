@@ -22,18 +22,24 @@ class ClinicPatientGateway
 
     /**
      * A private helper to get a unified stream of all revenue transactions.
+     * This method is still correct and will be used by getMonthlyRevenue, etc.
      */
     private function _getTotalRevenueQuery(): Builder
     {
+        // Filter the invoices to exclude refunded and voided transactions.
         $invoiceQuery = $this->connection->table('invoice_h')
+            ->whereNull('RetInvId')
+            ->whereNull('rmv_trans_dt')
             ->select(
                 'inv_dt as transaction_date',
-                DB::raw('cash + span as amount'),
+                DB::raw('cash + span + pt_check + visa + m_card as amount'),
                 'pt_id',
                 'doc_id'
             );
 
+        // Filter receipts to exclude only voided/cancelled transactions.
         $receiptQuery = $this->connection->table('receipts')
+            ->whereNull('rmv_trans_dt')
             ->select(
                 'rcpt_dt as transaction_date',
                 'amount',
@@ -47,20 +53,45 @@ class ClinicPatientGateway
     public function getKpiData(): stdClass
     {
         $today = now()->format('Y-m-d');
+        $yesterday = now()->subDay()->format('Y-m-d');
         $startOfMonth = now()->startOfMonth()->format('Y-m-d');
 
-        // FIXED: Use the subquery pattern to filter the UNION result
-        $unifiedQuery = $this->_getTotalRevenueQuery();
-        $totalRevenueToday = DB::connection('mssql_clinic')->table(DB::raw("({$unifiedQuery->toSql()}) as unified_revenue"))
-            ->mergeBindings($unifiedQuery)
-            ->where(DB::raw("CONVERT(date, transaction_date)"), '=', $today)
+        // --- THIS IS THE REFACTORED AND FINAL FIX ---
+        // We now query each table separately for each day to avoid subquery binding issues.
+
+        // Calculate Today's Revenue
+        $todaysInvoiceTotal = $this->connection->table('invoice_h')
+            ->whereNull('RetInvId')->whereNull('rmv_trans_dt')
+            ->whereDate('inv_dt', $today)
+            ->sum(DB::raw('cash + span + pt_check + visa + m_card'));
+
+        $todaysReceiptTotal = $this->connection->table('receipts')
+            ->whereNull('rmv_trans_dt')
+            ->whereDate('rcpt_dt', $today)
             ->sum('amount');
+        
+        $totalRevenueToday = $todaysInvoiceTotal + $todaysReceiptTotal;
+
+        // Calculate Yesterday's Revenue
+        $yesterdaysInvoiceTotal = $this->connection->table('invoice_h')
+            ->whereNull('RetInvId')->whereNull('rmv_trans_dt')
+            ->whereDate('inv_dt', $yesterday)
+            ->sum(DB::raw('cash + span + pt_check + visa + m_card'));
+
+        $yesterdaysReceiptTotal = $this->connection->table('receipts')
+            ->whereNull('rmv_trans_dt')
+            ->whereDate('rcpt_dt', $yesterday)
+            ->sum('amount');
+        
+        $totalRevenueYesterday = $yesterdaysInvoiceTotal + $yesterdaysReceiptTotal;
+        // --- END OF FIX ---
         
         $newPatientsThisMonth = $this->connection->table('patient')->where(DB::raw("CONVERT(date, trans_dt)"), '>=', $startOfMonth)->count('id');
         $appointmentsToday = $this->connection->table('appointment')->where(DB::raw("CONVERT(date, app_dt)"), '=', $today)->count('id');
 
         return (object)[
             'total_revenue_today' => $totalRevenueToday,
+            'total_revenue_yesterday' => $totalRevenueYesterday,
             'new_patients_this_month' => $newPatientsThisMonth,
             'appointments_today' => $appointmentsToday,
         ];

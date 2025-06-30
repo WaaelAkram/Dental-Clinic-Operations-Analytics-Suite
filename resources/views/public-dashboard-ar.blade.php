@@ -48,11 +48,7 @@
                 <p class="mt-1 text-3xl font-semibold text-indigo-600">{{ $data['kpis']->appointments_today ?? 0 }}</p>
             </div>
 
-            <!-- Patient Retention Rate Card -->
-            <div class="bg-white p-6 shadow rounded-lg text-center">
-                <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">نسبة عودة المرضى (آخر 30 يوم)</h3>
-                <p class="mt-1 text-3xl font-semibold text-indigo-600">%{{ number_format($data['retentionRate'] ?? 0, 1) }}</p>
-            </div>
+        
 
             <!-- New Patients Card -->
             <div class="bg-white p-6 shadow rounded-lg text-center">

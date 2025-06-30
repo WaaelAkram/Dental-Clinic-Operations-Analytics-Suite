@@ -32,7 +32,7 @@ class SendMarketingMessage implements ShouldQueue
     {
         $messageTemplate = config('marketing.lapsed_patient_template');
         $message = str_replace('{patient_name}', $this->patient->full_name, $messageTemplate);
-
+    $imageUrl = config('marketing.lapsed_patient_image_url'); // Get the image URL from the config
         $success = $whatsapp->sendMessage($this->patient->mobile, $message);
 
         if ($success) {
