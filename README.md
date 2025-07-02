@@ -1,53 +1,46 @@
-# Dental Clinic - Operations & Analytics Suite
+# Dental Clinic - Patient Engagement & Analytics Suite
 
-![PHP](https://img.shields.io/badge/PHP-777BB4?style=for-the-badge&logo=php&logoColor=white)![Laravel](https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-777BB4?style=for-the-badge&logo=php&logoColor=white)![Laravel](https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 
-A comprehensive operations suite built for a real-world dental clinic. This project provides a live, public-facing analytics dashboard and includes a robust backend system for automated patient communication via WhatsApp.
+An advanced operations and marketing suite built for a real-world dental clinic. This project provides a live analytics dashboard, automates proactive patient engagement (reminders, feedback), and includes an end-to-end marketing funnel to reactivate lapsed patients.
 
 ---
 
-
-
 ## Overview
 
-This project solves two key business needs for a busy dental clinic:
+This project solves three key business needs for a busy dental clinic:
 
-1.  **Business Intelligence:** It provides a public, multi-lingual (English & Arabic) dashboard displaying live Key Performance Indicators (KPIs) and data visualizations. This allows stakeholders to monitor the clinic's performance at a glance.
-2.  **Patient Engagement Automation:** It automates crucial patient communication, sending appointment reminders and feedback requests via WhatsApp to improve patient experience and operational efficiency.
+1.  **Business Intelligence:** A public, multi-lingual (English & Arabic) dashboard displays live Key Performance Indicators (KPIs) and data visualizations, allowing stakeholders to monitor clinic performance at a glance.
+2.  **Patient Service Automation:** Automates crucial communication like appointment reminders and feedback requests via WhatsApp, improving patient experience and operational efficiency while reducing no-shows.
+3.  **Automated Marketing & Growth:** Implements a complete, automated marketing funnel to identify, contact, and track the reactivation of patients who have not visited in over a year, turning past customers into new revenue.
 
-The system is designed with a professional, decoupled architecture to ensure maintainability, testability, and scalability.
+The system is designed with a professional, decoupled architecture using the Gateway Pattern and a robust queue system to ensure maintainability, testability, and scalability.
 
 ## Key Features
 
-*   **Live Analytics Dashboard:**
-    *   Displays critical KPIs like daily revenue, appointment volume, and patient retention rates.
-    *   Visualizes data with dynamic charts for monthly revenue and performance per doctor.
-    *   Full multi-language support for both English and Arabic, including right-to-left (RTL) layout adjustments.
+### 1. Live Analytics Dashboard
+-   **Public Facing:** Accessible via a URL for stakeholders (`/clinic-dashboard`).
+-   **Multi-Lingual:** Full support for English and Arabic with RTL layout.
+-   **Critical KPIs:** Live stats for Today's Revenue, Appointments Today, Avg. Revenue per Patient, and New Patients This Month.
+-   **Data Visualization:** Dynamic charts for Monthly Revenue, Top Doctors by Revenue, and New vs. Returning Patient Mix.
+-   **Doctor-Specific Metrics:** Ability to filter and view Avg. Revenue per Patient for individual doctors.
 
-*   **Automated Appointment Reminders:**
-    *   A scheduled background command (`reminders:send`) runs every 15 minutes.
-    *   Intelligently finds upcoming appointments within a configurable time window.
-    *   Dispatches queued jobs to send personalized reminders via WhatsApp, using different templates for confirmed vs. unconfirmed appointments.
-    *   Prevents duplicate reminders by logging every message sent.
+### 2. Automated Patient Communication
+-   **Appointment Reminders:** A scheduled job (`reminders:send`) runs every 15 minutes to find and notify patients of upcoming appointments via WhatsApp, using different templates for confirmed vs. unconfirmed status.
+-   **Feedback Requests:** An hourly job (`feedback:send`) identifies recently completed appointments and sends a WhatsApp message with a link to the clinic's review page, driving online reputation.
+-   **Smart Cooldowns:** Both reminders and feedback systems have built-in logic to prevent over-messaging repeat patients.
 
-*   **Automated Feedback System:**
-    *   A scheduled command (`feedback:send`) runs hourly to identify recently completed appointments.
-    *   Queues jobs to send a WhatsApp message with a direct link to the clinic's Google Reviews page, helping to drive online engagement.
-    *   Includes a configurable "cooldown" period to avoid over-messaging repeat patients.
+### 3. Lapsed Patient Reactivation Campaign (Marketing Funnel)
+An end-to-end automated system to win back former patients:
+-   **Step 1: Select (`marketing:select-daily-batch`):** A daily command identifies patients who haven't visited in over a year and are not on an exclusion list. It stages them for contact.
+-   **Step 2: Queue (`marketing:queue-staged-messages`):** A second command takes the daily batch and schedules personalized WhatsApp messages with a staggered, randomized delay to appear human and avoid spam filters.
+-   **Step 3: Track (`marketing:track-conversions`):** A third command runs daily to check if any of the contacted patients have booked a new appointment, automatically marking them as "converted" for ROI tracking.
 
-*   **Decoupled & Professional Architecture:**
-    *   **Gateway Pattern:** The `ClinicPatientGateway` class completely isolates the main application from the external clinic database. This is a crucial design choice that makes the application more modular, easier to maintain, and highly testable.
-    *   **Robust Background Processing:** Leverages Laravel's built-in Scheduler and Queue system to handle all automated tasks reliably without blocking the user interface.
-
-## System Architecture
-
-The application is designed with a clear separation of concerns.
-
-1.  **Web Interface (Dashboard):**
-    `User Request` -> `Route` -> `PublicDashboardController` -> `ClinicPatientGateway` -> `External DB`
-
-2.  **Automation Systems (Reminders/Feedback):**
-    `Laravel Scheduler` -> `Artisan Command` -> `Dispatches Job` -> `Queue Worker` -> `WhatsappService` -> `WhatsApp API`
+### 4. Marketing & Admin Dashboard
+A secure dashboard for administrative tasks:
+-   **Manual Broadcast Tool:** Allows an admin to send a custom WhatsApp message to a list of numbers with safe, staggered delays.
+-   **Marketing Exclusion Tool:** Provides an interface to permanently add a patient to a "Do Not Contact" list by their mobile number.
+-   **Performance Reporting:** A dedicated report page (`/marketing-report`) shows the performance of the lapsed patient campaign, including total messages sent, conversions, and conversion rate, with a searchable list of returned patients.
 
 ## Tech Stack
 
@@ -59,15 +52,31 @@ The application is designed with a clear separation of concerns.
     *   Node.js for the WhatsApp API service
     *   `whatsapp-web.js` library for WhatsApp connectivity
 
+## Scheduled & Manual Commands
+
+This application relies heavily on Laravel's scheduler. Here are the key commands:
+
+#### Reminders & Feedback
+-   `reminders:send`: Finds and queues appointment reminders. Runs every 15 minutes.
+-   `feedback:send`: Finds and queues feedback requests. Runs hourly.
+
+#### Marketing Campaign
+-   `marketing:select-daily-batch`: Selects daily lapsed patients. Runs once a day (e.g., 5 AM).
+-   `marketing:queue-staged-messages`: Queues the daily batch with delays. Runs once a day (e.g., 10 AM).
+-   `marketing:track-conversions`: Checks for returning patients. Runs once a day (e.g., 11 PM).
+
+#### Manual/Admin Tasks
+-   `marketing:send-manual {mobile} {message}`: Sends a single, immediate WhatsApp message from the command line for testing or one-off tasks.
+
 ## Getting Started
 
 ### Prerequisites
 
-*   PHP >= 8.2
-*   Composer
+*   PHP >= 8.2 & Composer
 *   Node.js & npm
-*   Access to a MySQL database
-*   Access to the clinic's MS SQL database
+*   XAMPP (or other stack with MySQL)
+*   Microsoft SQL Server
+*   PHP drivers for SQL Server (`sqlsrv`, `pdo_sqlsrv`)
 
 ### Installation & Setup
 
@@ -84,44 +93,33 @@ The application is designed with a clear separation of concerns.
     ```
 
 3.  **Environment Configuration:**
-    *   Copy the example environment file:
-        ```bash
-        cp .env.example .env
-        ```
-    *   Generate a new application key:
-        ```bash
-        php artisan key:generate
-        ```
-    *   Open the `.env` file and configure your database connections, especially `DB_CONNECTION` (for Laravel) and `DB_MSSQL_...` (for the clinic data). Also set the `WHATSAPP_API_PORT`.
+    *   Copy `.env.example` to `.env`.
+    *   Generate an application key: `php artisan key:generate`.
+    *   Configure **both** database connections in your `.env` file: the default `DB_*` variables for MySQL and the `CLINIC_DB_*` variables for your MSSQL server.
+    *   Set the `WHATSAPP_API_PORT`.
 
-4.  **Database Migration:**
-    Run the migrations to create the necessary tables for the application.
+4.  **Database Migration & Seeding:**
+    Run migrations for the application's MySQL database.
     ```bash
     php artisan migrate
-    ```
-
-5.  **Create Admin User:**
-    Seed the database to create the default admin user (`username: admin`, `password: password`).
-    ```bash
     php artisan db:seed
     ```
 
-6.  **Build Frontend Assets:**
+5.  **Build Frontend Assets:**
     ```bash
     npm run build
     ```
 
-### Running the Application
+### Running the Full System
 
-To run the full system, you will need to start three separate processes in three different terminal windows.
+You need three terminal windows running simultaneously.
 
 1.  **Start the Laravel Web Server:**
     ```bash
     php artisan serve
     ```
 
-2.  **Start the Laravel Queue Worker:**
-    This process is essential for sending reminders and feedback.
+2.  **Start the Laravel Queue Worker:** (Essential for all automated messages)
     ```bash
     php artisan queue:work
     ```
@@ -130,9 +128,9 @@ To run the full system, you will need to start three separate processes in three
     ```bash
     node whatsapp-api.cjs
     ```
-    *On the first run, you will need to scan the QR code that appears in the terminal with your phone to log in.*
+    *On the first run, scan the QR code in the terminal with WhatsApp to log in.*
 
-You can now access the admin panel at `http://localhost:8000/login` and the public dashboard at `http://localhost:8000/clinic-dashboard`.
+You can now access the admin panel at `http://localhost:8000` (or your configured URL) and the public dashboard at `/clinic-dashboard`.
 
 ### Running Scheduled Tasks Manually
 
