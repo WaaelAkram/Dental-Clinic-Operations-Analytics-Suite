@@ -26,6 +26,23 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
                     <h3 class="text-lg font-medium text-gray-900 mb-4">Recently Converted Patients</h3>
+                    
+                    {{-- Search Form --}}
+                    <div class="mb-4">
+                        <form action="{{ route('marketing.report') }}" method="GET">
+                            <div class="flex items-center">
+                                <x-text-input id="search_mobile" name="search_mobile" type="text" class="block w-full md:w-1/3" placeholder="Search by mobile number..." :value="$searchMobile ?? ''" />
+                                <x-primary-button class="ms-3">
+                                    {{ __('Search') }}
+                                </x-primary-button>
+                                @if($searchMobile)
+                                    <a href="{{ route('marketing.report') }}" class="ms-3 text-sm text-gray-600 hover:text-gray-900">Clear</a>
+                                @endif
+                            </div>
+                        </form>
+                    </div>
+
+                    {{-- Results Table --}}
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -41,17 +58,25 @@
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap">{{ $conversion->patient->full_name ?? 'N/A' }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap">{{ $conversion->mobile }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap">{{ $conversion->message_sent_at->format('Y-m-d') }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap">{{ $conversion->message_sent_at->format('Y-m-d H:i') }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap">{{ $conversion->new_appointment_date->format('Y-m-d') }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">No conversions recorded yet.</td>
+                                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                            @if($searchMobile)
+                                                No patients found matching "{{ $searchMobile }}".
+                                            @else
+                                                No conversions recorded yet.
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
+
+                    {{-- Pagination Links --}}
                     <div class="mt-4">
                         {{ $conversions->links() }}
                     </div>

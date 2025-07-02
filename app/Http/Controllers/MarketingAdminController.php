@@ -84,21 +84,36 @@ class MarketingAdminController extends Controller
     /**
      * Displays the performance report for the marketing campaign.
      */
-    public function showReport()
-    {
-        $totalSent = SentMarketingMessage::where('status', 'sent')->count();
-        $totalConversions = SentMarketingMessage::whereNotNull('converted_at')->count();
+  public function showReport(Request $request) // <-- Add Request $request here
+{
+    // --- SEARCH LOGIC START ---
+    $searchMobile = $request->input('search_mobile');
 
-        $stats = [
-            'total_sent' => $totalSent,
-            'total_conversions' => $totalConversions,
-            'conversion_rate' => $totalSent > 0 ? ($totalConversions / $totalSent) * 100 : 0,
-        ];
+    // Start building the query for conversions
+    $query = SentMarketingMessage::whereNotNull('converted_at');
 
-        $conversions = SentMarketingMessage::whereNotNull('converted_at')
-            ->orderBy('converted_at', 'desc')
-            ->paginate(20);
-
-        return view('report', compact('stats', 'conversions'));
+    if ($searchMobile) {
+        // If a mobile number is provided in the search, filter the query.
+        // The 'like' operator with '%' allows for partial matches.
+        $query->where('mobile', 'like', '%' . $searchMobile . '%');
     }
+    // --- SEARCH LOGIC END ---
+
+    // Stats will now be calculated on the *unfiltered* results to show overall performance.
+    $totalSent = SentMarketingMessage::where('status', 'sent')->count();
+    $totalConversions = SentMarketingMessage::whereNotNull('converted_at')->count();
+
+    $stats = [
+        'total_sent' => $totalSent,
+        'total_conversions' => $totalConversions,
+        'conversion_rate' => $totalSent > 0 ? ($totalConversions / $totalSent) * 100 : 0,
+    ];
+
+    // Get the (potentially filtered) list of conversions for display, ordered by the most recent.
+    // The `withQueryString()` is important to keep the search term in the pagination links.
+    $conversions = $query->orderBy('converted_at', 'desc')->paginate(20)->withQueryString();
+
+    // Pass both the stats, the conversions, and the search term back to the view.
+    return view('report', compact('stats', 'conversions', 'searchMobile'));
+}
 }
