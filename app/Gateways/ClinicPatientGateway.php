@@ -97,24 +97,28 @@ class ClinicPatientGateway
         ];
     }
     
-    public function getMonthlyRevenue(): Collection
-    {
-        $startDate = now()->subMonths(12)->startOfMonth()->format('Y-m-d');
-        
-        $unifiedRevenueQuery = $this->_getTotalRevenueQuery();
-        $unifiedRevenue = DB::connection('mssql_clinic')->table(DB::raw("({$unifiedRevenueQuery->toSql()}) as unified_revenue"))
-            ->mergeBindings($unifiedRevenueQuery);
+public function getMonthlyRevenue(): Collection
+{
+    // --- BEFORE ---
+    // $startDate = now()->subMonths(12)->startOfMonth()->format('Y-m-d');
 
-        return $unifiedRevenue
-            ->select(
-                DB::raw("CONVERT(VARCHAR(7), transaction_date, 120) as month"),
-                DB::raw('SUM(amount) as total_revenue')
-            )
-            ->where(DB::raw("CONVERT(date, transaction_date)"), '>=', $startDate)
-            ->groupBy(DB::raw("CONVERT(VARCHAR(7), transaction_date, 120)"))
-            ->orderBy('month', 'asc')
-            ->get();
-    }
+    // --- AFTER (The only change needed in this file) ---
+    $startDate = now()->subMonths(24)->startOfMonth()->format('Y-m-d');
+    
+    $unifiedRevenueQuery = $this->_getTotalRevenueQuery();
+    $unifiedRevenue = DB::connection('mssql_clinic')->table(DB::raw("({$unifiedRevenueQuery->toSql()}) as unified_revenue"))
+        ->mergeBindings($unifiedRevenueQuery);
+
+    return $unifiedRevenue
+        ->select(
+            DB::raw("CONVERT(VARCHAR(7), transaction_date, 120) as month"),
+            DB::raw('SUM(amount) as total_revenue')
+        )
+        ->where(DB::raw("CONVERT(date, transaction_date)"), '>=', $startDate)
+        ->groupBy(DB::raw("CONVERT(VARCHAR(7), transaction_date, 120)"))
+        ->orderBy('month', 'asc')
+        ->get();
+}
 
     public function getRevenuePerDoctor(int $days = 30): Collection
     {
