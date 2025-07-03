@@ -277,11 +277,22 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
         return $this->connection->table('patient')->where('mobile', $mobile)->first();
     }
 
-    public function findPatientById(int $patientId): ?stdClass
+ public function findPatientById(int $patientId): ?stdClass
     {
-        return $this->connection->table('patient')->where('id', $patientId)->first();
+        return $this->connection->table('patient')
+            ->where('id', $patientId)
+            ->selectRaw(
+                "*, RTRIM(
+                    ISNULL(CAST(fname_a AS NVARCHAR(255)), '') + ' ' + 
+                    ISNULL(CAST(sname_a AS NVARCHAR(255)), '') + ' ' + 
+                    ISNULL(CAST(lname_a AS NVARCHAR(255)), '')
+                ) as full_name"
+            )
+            ->first();
     }
-    
+    // ================== END OF CHANGE #1 ==================
+
+    // This method is unchanged.
     public function findPatientsByIds(array $patientIds): Collection
     {
         if (empty($patientIds)) {
@@ -289,7 +300,6 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
         }
         return $this->connection->table('patient')->whereIn('id', $patientIds)->get()->keyBy('id');
     }
-    
     public function getAppointmentsInWindow(string $startTime, string $endTime): Collection
     {
         $today_yyyymmdd = now()->format('Y/m/d'); 
@@ -372,36 +382,30 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
         return $result->total_revenue / $result->unique_patients;
     }
  public function getLapsedPatients(int $daysAgoStart = 365): \Illuminate\Support\Collection
-{
-    $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
-    
-    // ======================= THE CORRECTED FIX FOR PRE-2008 SQL SERVER =======================
-    // This version uses ISNULL, which is compatible with very old versions of SQL Server.
-    // It checks each name part and replaces it with an empty string if it's NULL,
-    // preventing the entire name from becoming NULL.
-    $sql = "
-        SELECT 
-            p.id, 
-            RTRIM(
-                ISNULL(p.fname_a, '') + ' ' + 
-                ISNULL(p.sname_a, '') + ' ' + 
-                ISNULL(p.lname_a, '')
-            ) as full_name,
-            p.mobile
-        FROM patient p
-        JOIN (
-            SELECT pt_id, MAX(CONVERT(date, app_dt)) as last_appointment_date
-            FROM appointment
-            GROUP BY pt_id
-        ) as last_app ON p.id = last_app.pt_id
-        WHERE last_app.last_appointment_date <= ?
-        ORDER BY last_app.last_appointment_date DESC
-    ";
-    // ======================= END OF FIX =======================
+    {
+        $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+        
+        $sql = "
+            SELECT 
+                p.id, 
+                RTRIM(
+                    ISNULL(CAST(p.fname_a AS NVARCHAR(255)), '') + ' ' + 
+                    ISNULL(CAST(p.sname_a AS NVARCHAR(255)), '') + ' ' + 
+                    ISNULL(CAST(p.lname_a AS NVARCHAR(255)), '')
+                ) as full_name,
+                p.mobile
+            FROM patient p
+            JOIN (
+                SELECT pt_id, MAX(CONVERT(date, app_dt)) as last_appointment_date
+                FROM appointment
+                GROUP BY pt_id
+            ) as last_app ON p.id = last_app.pt_id
+            WHERE last_app.last_appointment_date <= ?
+            ORDER BY last_app.last_appointment_date DESC
+        ";
 
-    return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
-}
-
+        return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
+    }
 public function getFirstAppointmentsForPatientsAfter(array $patientIds, \Carbon\Carbon $startDate): \Illuminate\Support\Collection
 {
     if (empty($patientIds)) { return collect(); }
@@ -419,4 +423,18 @@ public function getFirstAppointmentsForPatientsAfter(array $patientIds, \Carbon\
     ";
     return collect(DB::connection('mssql_clinic')->select($sql, [$startDateString]));
 }
+public function getPatientsWithFutureAppointments(array $patientIds): Collection
+    {
+        if (empty($patientIds)) {
+            return collect();
+        }
+
+        $today = now()->format('Y-m-d');
+
+        return $this->connection->table('appointment')
+            ->whereIn('pt_id', $patientIds)
+            ->where(DB::raw("CONVERT(date, app_dt)"), '>=', $today)
+            ->distinct()
+            ->pluck('pt_id');
+    }
 }
