@@ -371,13 +371,22 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
 
         return $result->total_revenue / $result->unique_patients;
     }
-    public function getLapsedPatients(int $daysAgoStart = 365): \Illuminate\Support\Collection
+ public function getLapsedPatients(int $daysAgoStart = 365): \Illuminate\Support\Collection
 {
     $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+    
+    // ======================= THE CORRECTED FIX FOR PRE-2008 SQL SERVER =======================
+    // This version uses ISNULL, which is compatible with very old versions of SQL Server.
+    // It checks each name part and replaces it with an empty string if it's NULL,
+    // preventing the entire name from becoming NULL.
     $sql = "
         SELECT 
             p.id, 
-            (p.fname_a + ' ' + p.sname_a + ' ' + p.lname_a) as full_name, 
+            RTRIM(
+                ISNULL(p.fname_a, '') + ' ' + 
+                ISNULL(p.sname_a, '') + ' ' + 
+                ISNULL(p.lname_a, '')
+            ) as full_name,
             p.mobile
         FROM patient p
         JOIN (
@@ -388,6 +397,8 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
         WHERE last_app.last_appointment_date <= ?
         ORDER BY last_app.last_appointment_date DESC
     ";
+    // ======================= END OF FIX =======================
+
     return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
 }
 

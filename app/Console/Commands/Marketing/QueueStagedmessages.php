@@ -33,8 +33,6 @@ public function handle(): int
     // 2. Define the sending window with today's date explicitly.
     $startTime = Carbon::today()->setTimeFromTimeString(config('marketing.send_window_start', '15:00'));
     $endTime = Carbon::today()->setTimeFromTimeString(config('marketing.send_window_end', '21:30'));
-
-    // Get the current time.
     $now = now();
 
     // Check if the entire sending window has already passed for today.
@@ -45,43 +43,41 @@ public function handle(): int
     }
 
     // THIS IS THE KEY FIX:
-    // If the command is run before the start time, the effective start time for queuing
-    // is the one from the config. If it's run *after* the start time, we begin queuing immediately.
+    // Determine the effective start time for queuing.
     $effectiveStartTime = $now->isAfter($startTime) ? $now : $startTime;
     
-    // =================== END OF NEW LOGIC ===================
-
-    $totalWindowSeconds = $endTime->diffInSeconds($effectiveStartTime);
+    // Calculate the total remaining seconds in the window.
+    $remainingWindowSeconds = $endTime->diffInSeconds($effectiveStartTime);
     $batchCount = $stagedMessages->count();
 
     // Prevent division by zero if there's only one message.
-    $interval = $batchCount > 1 ? $totalWindowSeconds / ($batchCount - 1) : 0;
+    $interval = $batchCount > 1 ? $remainingWindowSeconds / ($batchCount - 1) : 0;
+    // =================== END OF NEW LOGIC ===================
 
     // 3. Loop, dispatch with a calculated delay, and update status.
     foreach ($stagedMessages as $index => $message) {
         $patientData = $message->patient;
-        if (!$patientData) {
-            $this->error("Could not find patient details for ID: {$message->patient_id}. Skipping.");
+        if (!$patientData || empty($patientData->full_name)) { // Added a check for empty name
+            $this->error("Could not find patient details for ID: {$message->patient_id} or name is empty. Skipping.");
+            $message->update(['status' => 'failed', 'reason' => 'Patient data missing']);
             continue;
         }
 
         $prospect = (object)[
             'id' => $message->patient_id,
             'mobile' => $message->mobile,
-            'full_name' => $patientData->full_name ?? 'Valued Patient',
+            'full_name' => $patientData->full_name,
         ];
 
-        // ======================= THE KEY CHANGE =======================
-        // Calculate the delay based on the *effective* start time.
+        // The delay is now an offset in seconds from *this moment*.
         $delayInSeconds = floor($index * $interval);
-        $dispatchTime = $effectiveStartTime->copy()->addSeconds($delayInSeconds);
 
-        // Use the ->delay() method on the job. The queue will hold the job until this time.
-        SendMarketingMessage::dispatch($prospect)->delay($dispatchTime);
-        // =================== END OF KEY CHANGE ===================
+        // Dispatch the job with the calculated delay in seconds.
+        SendMarketingMessage::dispatch($prospect)->delay($delayInSeconds);
 
         $message->update(['status' => 'queued']);
-
+        
+        $dispatchTime = now()->addSeconds($delayInSeconds);
         $this->line(" -> Queued job for Patient ID #{$prospect->id}. Dispatching at approximately: " . $dispatchTime->format('H:i:s'));
     }
 
