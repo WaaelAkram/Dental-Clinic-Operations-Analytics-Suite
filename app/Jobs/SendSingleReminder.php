@@ -4,7 +4,7 @@
 namespace App\Jobs;
 
 use App\Models\SentReminder;
-use App\Services\WhatsappService; // <-- IMPORT THE SERVICE
+use App\Services\WhatsappManager; // <-- KEY CHANGE #1: Import the Manager
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +17,6 @@ use Illuminate\Support\Facades\App;
 class SendSingleReminder implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
     public $appointment;
 
     public function __construct(\stdClass $appointment)
@@ -25,54 +24,28 @@ class SendSingleReminder implements ShouldQueue
         $this->appointment = $appointment;
     }
 
-    public function handle(WhatsappManager $whatsappManager): void // <-- INJECT THE SERVICE
-    {  if (SentReminder::where('appointment_id', $this->appointment->appointment_id)->exists()) {
-        Log::info("Skipping reminder for appointment #{$this->appointment->appointment_id} because it was already processed by a concurrent job.");
-        return; // Exit the job gracefully.
-    }
-        // Determine which template to use based on appointment status
-        if ($this->appointment->app_status == 1) { // Confirmed
-            $messageTemplate = config('reminders.template_confirmed');
-        } elseif ($this->appointment->app_status == 0) { // Unconfirmed
-            $messageTemplate = config('reminders.template_unconfirmed');
-        } else {
-            Log::warning("Tried to send reminder for an appointment with an invalid status.", [
-                'appointment_id' => $this->appointment->appointment_id,
-                'status' => $this->appointment->app_status
-            ]);
+    public function handle(WhatsappManager $whatsappManager): void // <-- KEY CHANGE #2: Inject the Manager
+    {
+        if (SentReminder::where('appointment_id', $this->appointment->appointment_id)->exists()) {
             return;
         }
-
-        // Prepare the placeholder values
+        
+        // This job now ONLY handles confirmed appointments.
+        $messageTemplate = config('reminders.template_confirmed');
         $patientName = $this->appointment->full_name;
         $appointmentTime = Carbon::parse($this->appointment->appointment_time)->format('g:i A');
-        $doctorName = $this->appointment->doctor_name ?? 'العيادة'; 
-
-        $originalLocale = App::getLocale();
+        $doctorName = $this->appointment->doctor_name ?? 'العيادة';
         App::setLocale('ar');
         $appointmentDate = Carbon::parse($this->appointment->appointment_date)->translatedFormat('l، j F Y');
-        App::setLocale($originalLocale);
-
-        $message = str_replace(
-            ['{patient_name}', '{appointment_time}', '{doctor_name}', '{appointment_date}'],
-            [$patientName, $appointmentTime, $doctorName, $appointmentDate],
-            $messageTemplate
-        );
-
-        // --- THIS IS THE KEY CHANGE ---
-        // Send the message via our WhatsApp service
-          $success = $whatsappManager->channel('service')->sendMessage($this->appointment->mobile, $message);
-        // --- END OF CHANGE ---
+        App::setLocale('en');
+        $message = str_replace(['{patient_name}', '{appointment_time}', '{doctor_name}', '{appointment_date}'], [$patientName, $appointmentTime, $doctorName, $appointmentDate], $messageTemplate);
+        
+        // <-- KEY CHANGE #3: Use the manager to select the correct channel
+        $success = $whatsappManager->channel('service')->sendMessage($this->appointment->mobile, $message);
         
         if ($success) {
-            // Log that the reminder was sent
-            SentReminder::create([
-                'appointment_id' => $this->appointment->appointment_id,
-                'sent_at' => now(),
-            ]);
-            Log::info("Reminder successfully dispatched to {$this->appointment->mobile} for appointment #{$this->appointment->appointment_id}");
-        } else {
-            Log::error("Failed to dispatch reminder via WhatsApp API for appointment #{$this->appointment->appointment_id}");
+            SentReminder::create(['appointment_id' => $this->appointment->appointment_id, 'sent_at' => now()]);
+            Log::info("Confirmed reminder dispatched via [service] channel for appt #{$this->appointment->appointment_id}");
         }
     }
 }

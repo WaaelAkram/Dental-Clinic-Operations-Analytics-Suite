@@ -2,7 +2,7 @@
 namespace App\Jobs;
 
 use App\Models\SentFeedbackRequest;
-use App\Services\WhatsappService;
+use App\Services\WhatsappManager; // <-- KEY CHANGE #1: Import the Manager
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Log;
 class SendFeedbackRequest implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
     public $appointment;
 
     public function __construct(\stdClass $appointment)
@@ -21,32 +20,25 @@ class SendFeedbackRequest implements ShouldQueue
         $this->appointment = $appointment;
     }
 
-    public function handle(WhatsappService $whatsapp): void
+    public function handle(WhatsappManager $whatsappManager): void // <-- KEY CHANGE #2: Inject the Manager
     {
-        // ... (message templating logic remains the same) ...
         $messageTemplate = config('feedback.template');
         $feedbackLink = config('feedback.feedback_url');
-
         $patientName = $this->appointment->full_name;
         $doctorName = $this->appointment->doctor_name ?? 'المركز';
-
-        $message = str_replace(
-            ['{patient_name}', '{doctor_name}', '{feedback_link}'],
-            [$patientName, $doctorName, $feedbackLink],
-            $messageTemplate
-        );
+        $message = str_replace(['{patient_name}', '{doctor_name}', '{feedback_link}'], [$patientName, $doctorName, $feedbackLink], $messageTemplate);
 
         try {
-            $success = $whatsapp->sendMessage($this->appointment->mobile, $message);
+            // <-- KEY CHANGE #3: Use the manager to select the correct channel
+            $success = $whatsappManager->channel('service')->sendMessage($this->appointment->mobile, $message);
             
             if ($success) {
-                // --- UPDATE THIS BLOCK ---
                 SentFeedbackRequest::create([
                     'appointment_id' => $this->appointment->appointment_id,
                     'sent_at' => now(),
-                    'mobile' => $this->appointment->mobile, // Save the mobile number
+                    'mobile' => $this->appointment->mobile,
                 ]);
-                Log::info("Feedback request successfully dispatched to {$this->appointment->mobile} for appointment #{$this->appointment->appointment_id}");
+                Log::info("Feedback request successfully dispatched via [service] channel to {$this->appointment->mobile} for appt #{$this->appointment->appointment_id}");
             }
         } catch (\Exception $e) {
             Log::critical("FEEDBACK_SYSTEM_ERROR: Could not process job for appointment ID {$this->appointment->appointment_id}: " . $e->getMessage());
