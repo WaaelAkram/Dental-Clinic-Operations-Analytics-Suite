@@ -11,6 +11,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+          $this->app->singleton(WhatsappManager::class, function ($app) {
+            return new WhatsappManager($app['config']['whatsapp']);
+             });
         //
     }
 

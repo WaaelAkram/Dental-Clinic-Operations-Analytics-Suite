@@ -25,7 +25,7 @@ class SendSingleReminder implements ShouldQueue
         $this->appointment = $appointment;
     }
 
-    public function handle(WhatsappService $whatsapp): void // <-- INJECT THE SERVICE
+    public function handle(WhatsappManager $whatsappManager): void // <-- INJECT THE SERVICE
     {  if (SentReminder::where('appointment_id', $this->appointment->appointment_id)->exists()) {
         Log::info("Skipping reminder for appointment #{$this->appointment->appointment_id} because it was already processed by a concurrent job.");
         return; // Exit the job gracefully.
@@ -61,7 +61,7 @@ class SendSingleReminder implements ShouldQueue
 
         // --- THIS IS THE KEY CHANGE ---
         // Send the message via our WhatsApp service
-        $success = $whatsapp->sendMessage($this->appointment->mobile, $message);
+          $success = $whatsappManager->channel('service')->sendMessage($this->appointment->mobile, $message);
         // --- END OF CHANGE ---
         
         if ($success) {

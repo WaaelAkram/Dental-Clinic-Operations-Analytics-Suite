@@ -11,10 +11,22 @@ class Kernel extends ConsoleKernel
     {
         // ... any other commands ...
 
-        // THIS IS THE FIX:
+       
+                  // Same-day CONFIRMED reminders
         $schedule->command('reminders:send')
                  ->everyFifteenMinutes()
-                 ->withoutOverlapping(); // <-- ADD THIS LINE
+                 ->withoutOverlapping();
+
+        // 24-hour UNCONFIRMED reminders
+        $schedule->command('reminders:send-24hr-unconfirmed')
+                 ->everyFiveMinutes()
+                 ->withoutOverlapping();
+
+        // Feedback and Marketing
+        $schedule->command('feedback:send')->hourly()->withoutOverlapping();
+        $schedule->command('marketing:select-daily-batch')->dailyAt('05:00');
+        $schedule->command('marketing:queue-staged-messages')->dailyAt('10:00');
+        $schedule->command('marketing:track-conversions')->dailyAt('23:00');
 
         // Your feedback command, when added, should also have this
         // $schedule->command('feedback:send')->hourly()->withoutOverlapping();
