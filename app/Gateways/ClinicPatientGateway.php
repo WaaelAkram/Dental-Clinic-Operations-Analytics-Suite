@@ -381,10 +381,11 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
 
         return $result->total_revenue / $result->unique_patients;
     }
- public function getLapsedPatients(int $daysAgoStart = 365): \Illuminate\Support\Collection
+public function getLapsedPatients(int $daysAgoStart = 365): Collection
     {
-        $cutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
-        
+        $lapsedCutoffDate = now()->subDays($daysAgoStart)->format('Y-m-d');
+        $today = now()->format('Y-m-d');
+
         $sql = "
             SELECT 
                 p.id, 
@@ -393,18 +394,26 @@ public function getNewVsReturningPatients(int $days = 30): \Illuminate\Support\C
                     ISNULL(CAST(p.sname_a AS NVARCHAR(255)), '') + ' ' + 
                     ISNULL(CAST(p.lname_a AS NVARCHAR(255)), '')
                 ) as full_name,
-                p.mobile
+                p.mobile,
+                last_app.last_appointment_date
             FROM patient p
             JOIN (
                 SELECT pt_id, MAX(CONVERT(date, app_dt)) as last_appointment_date
                 FROM appointment
                 GROUP BY pt_id
             ) as last_app ON p.id = last_app.pt_id
-            WHERE last_app.last_appointment_date <= ?
+            LEFT JOIN (
+                SELECT DISTINCT pt_id
+                FROM appointment
+                WHERE CONVERT(date, app_dt) >= ?
+            ) as future_app ON p.id = future_app.pt_id
+            WHERE 
+                last_app.last_appointment_date <= ?
+                AND future_app.pt_id IS NULL
             ORDER BY last_app.last_appointment_date DESC
         ";
 
-        return collect(DB::connection('mssql_clinic')->select($sql, [$cutoffDate]));
+        return collect(DB::connection('mssql_clinic')->select($sql, [$today, $lapsedCutoffDate]));
     }
 public function getFirstAppointmentsForPatientsAfter(array $patientIds, \Carbon\Carbon $startDate): \Illuminate\Support\Collection
 {
