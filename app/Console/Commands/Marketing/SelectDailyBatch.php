@@ -13,7 +13,7 @@ class SelectDailyBatch extends Command
     protected $signature = 'marketing:select-daily-batch {--dry-run : Preview the selected patients without saving them}';
     protected $description = 'Selects a daily batch of lapsed patients to be queued for marketing messages.';
 
-       public function handle(ClinicPatientGateway $gateway): int
+          public function handle(ClinicPatientGateway $gateway): int
     {
         $isDryRun = $this->option('dry-run');
         if ($isDryRun) {
@@ -28,6 +28,20 @@ class SelectDailyBatch extends Command
             return self::SUCCESS;
         }
         $this->info("Found {$lapsedCandidates->count()} potential candidates (already filtered for future appointments).");
+
+        // --- CHANGE #1: Get the daily limit from the config.
+        // We will now provide a safe default of 0 if the config is missing,
+        // and we will add a check to ensure it's a valid number.
+        $dailyLimit = config('marketing.daily_limit', 0);
+
+        // --- CHANGE #2: Add a safety check and clear feedback.
+        if ($dailyLimit <= 0) {
+            $this->error("Marketing daily limit is not configured or is zero. Exiting to prevent errors.");
+            Log::warning("Marketing cron: Daily limit is zero or not set in config/marketing.php.");
+            return self::FAILURE;
+        }
+        $this->info("Daily sending limit is set to: {$dailyLimit}");
+
 
         $permanentExclusions = MarketingExclusion::pluck('patient_id');
         $this->info("Found {$permanentExclusions->count()} permanently excluded patients.");
@@ -47,7 +61,7 @@ class SelectDailyBatch extends Command
             return self::SUCCESS;
         }
 
-        $dailyLimit = config('marketing.daily_limit', 30);
+        // The old line is now gone. We use the $dailyLimit variable we defined above.
         $batch = $finalProspects->take($dailyLimit);
         $this->info("Selecting a batch of {$batch->count()} prospects (limit was {$dailyLimit}).");
 

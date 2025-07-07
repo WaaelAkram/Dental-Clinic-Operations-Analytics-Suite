@@ -446,16 +446,32 @@ public function getPatientsWithFutureAppointments(array $patientIds): Collection
             ->distinct()
             ->pluck('pt_id');
     }
+      /**
+     * Finds unconfirmed appointments for tomorrow within a specific time window.
+     * This query is now optimized by filtering by DATE first.
+     */
     public function getTomorrowsAppointmentsInWindow(string $startTime, string $endTime): Collection
     {
         $tomorrow_yyyymmdd = now()->addDay()->format('Y/m/d');
 
         return $this->connection->table('appointment')
+            // --- KEY CHANGE: Check the date FIRST ---
+            // This immediately reduces the search to only tomorrow's appointments.
             ->where('app_dt', $tomorrow_yyyymmdd)
+
+            // Now, from that small set, find the unconfirmed and time-matching ones.
             ->where('app_status', 0) // 0 = Unconfirmed
             ->whereTime('from_tm', '>=', $startTime)
             ->whereTime('from_tm', '<', $endTime)
-            ->select('id as appointment_id', 'pt_name as full_name', 'mobile', 'from_tm as appointment_time', 'doc_nm as doctor_name', 'app_dt as appointment_date')
+            
+            ->select(
+                'id as appointment_id',
+                'pt_name as full_name',
+                'mobile',
+                'from_tm as appointment_time',
+                'doc_nm as doctor_name',
+                'app_dt as appointment_date'
+            )
             ->get();
     }
 }

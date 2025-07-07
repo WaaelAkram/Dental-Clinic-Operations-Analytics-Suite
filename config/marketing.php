@@ -1,6 +1,6 @@
 <?php
 return [
-    'daily_limit' => env('MARKETING_DAILY_LIMIT', 50),
+    'daily_limit' => env('MARKETING_DAILY_LIMIT', 5),
     'send_window_start' => '15:00',
     'send_window_end'   => '21:30',
     'lapsed_patient_template' => env('MARKETING_LAPSED_PATIENT_TEMPLATE', "مرحباً {patient_name}، لقد اشتقنا لك في مركزنا! لم نرك منذ عام. هل تود حجز موعد فحص دوري؟ نحن هنا لخدمتك."),
