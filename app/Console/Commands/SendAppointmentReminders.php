@@ -15,7 +15,7 @@ class SendAppointmentReminders extends Command
     protected $signature = 'reminders:send';
     protected $description = 'Finds all upcoming appointments within the reminder window and sends notifications.';
 
-    public function handle(ClinicPatientGateway $gateway): int
+       public function handle(ClinicPatientGateway $gateway): int
     {
         $reminderWindows = config('reminders.windows');
         $now = now();
@@ -26,9 +26,15 @@ class SendAppointmentReminders extends Command
         $startTime = $now->copy()->format('H:i:s');
         $endTime = $now->copy()->addMinutes($maxWindowMinutes)->format('H:i:s');
         $appointmentsInMaxWindow = $gateway->getAppointmentsInWindow($startTime, $endTime);
+        
+        // ====================================================================
+        // THIS IS THE ONLY LINE YOU NEED TO ADD
+        // It filters the collection to only include confirmed (status 1) appointments.
+        $appointmentsInMaxWindow = $appointmentsInMaxWindow->where('app_status', 1);
+        // ====================================================================
 
         if ($appointmentsInMaxWindow->isEmpty()) {
-            $this->info("No appointments found in the upcoming {$maxWindowMinutes} minute window.");
+            $this->info("No confirmed appointments found in the upcoming {$maxWindowMinutes} minute window.");
             return self::SUCCESS;
         }
 
@@ -40,7 +46,7 @@ class SendAppointmentReminders extends Command
         $unsentAppointments = $appointmentsInMaxWindow->whereNotIn('appointment_id', $sentIds);
 
         if ($unsentAppointments->isEmpty()) {
-            $this->info("All upcoming appointments have already been reminded.");
+            $this->info("All upcoming confirmed appointments have already been reminded.");
             return self::SUCCESS;
         }
 
@@ -52,17 +58,13 @@ class SendAppointmentReminders extends Command
                 continue;
             }
             
-            // Parse both timestamps using Carbon for accurate comparison
             $appointmentTime = Carbon::parse($appointment->appointment_date . ' ' . $appointment->appointment_time);
             $creationTime = Carbon::parse($appointment->created_at);
 
-            // --- THIS IS THE NEW LOGIC ---
-            // Check if the appointment was created less than an hour before its start time
             if ($creationTime->diffInMinutes($appointmentTime) < 120) {
                 $this->line(".. Skipping last-minute appointment #{$appointment->appointment_id}. Booked too close to appointment time.");
-                continue; // Skip this appointment and go to the next one
+                continue;
             }
-            // --- END OF NEW LOGIC ---
 
             if ($dispatchedCount > 0) {
                 $delaySeconds = rand(40, 120);
@@ -70,6 +72,7 @@ class SendAppointmentReminders extends Command
                 sleep($delaySeconds);
             }
 
+            // The code below is now safe because we've already filtered for status 1.
             $status = $appointment->app_status;
             if (!isset($reminderWindows[$status])) {
                 continue;
@@ -79,11 +82,11 @@ class SendAppointmentReminders extends Command
             if ($appointmentTime->isBetween($now, $now->copy()->addMinutes($specificWindow))) {
                 SendSingleReminder::dispatch($appointment);
                 $dispatchedCount++;
-                $this->line(" -> Queued reminder for appointment #{$appointment->appointment_id} (Status: {$status}, Window: {$specificWindow} mins)");
+                $this->line(" -> Queued reminder for confirmed appointment #{$appointment->appointment_id}");
             }
         }
 
-        $logMessage = "Checked {$appointmentsInMaxWindow->count()} appointments. Dispatched {$dispatchedCount} new reminder jobs.";
+        $logMessage = "Checked for confirmed appointments. Dispatched {$dispatchedCount} new reminder jobs.";
         $this->info($logMessage);
         Log::info($logMessage);
 

@@ -13,58 +13,78 @@ class Send24HourUnconfirmedReminders extends Command
     protected $signature = 'reminders:send-24hr-unconfirmed';
     protected $description = 'Finds unconfirmed appointments for tomorrow in the next 5-minute window and queues reminders.';
 
-    public function handle(ClinicPatientGateway $gateway): int
+       public function handle(ClinicPatientGateway $gateway): int
     {
+        $reminderWindows = config('reminders.windows');
         $now = now();
+
+        $maxWindowMinutes = max($reminderWindows);
+        $this->info("Max reminder window is {$maxWindowMinutes} minutes.");
+
         $startTime = $now->copy()->format('H:i:s');
-        $endTime = $now->copy()->addMinutes(5)->format('H:i:s');
+        $endTime = $now->copy()->addMinutes($maxWindowMinutes)->format('H:i:s');
+        $appointmentsInMaxWindow = $gateway->getAppointmentsInWindow($startTime, $endTime);
+        
+        // ====================================================================
+        // THIS IS THE ONLY LINE YOU NEED TO ADD
+        // It filters the collection to only include confirmed (status 1) appointments.
+        $appointmentsInMaxWindow = $appointmentsInMaxWindow->where('app_status', 1);
+        // ====================================================================
 
-        $this->info("Checking for unconfirmed appointments for tomorrow between {$startTime} and {$endTime}.");
-
-        $appointments = $gateway->getTomorrowsAppointmentsInWindow($startTime, $endTime);
-
-        if ($appointments->isEmpty()) {
-            $this->info("No unconfirmed appointments found in the target window.");
+        if ($appointmentsInMaxWindow->isEmpty()) {
+            $this->info("No confirmed appointments found in the upcoming {$maxWindowMinutes} minute window.");
             return self::SUCCESS;
         }
 
-        $appointmentIdsToCheck = $appointments->pluck('appointment_id')->all();
-        $sentIds = SentReminder::whereIn('appointment_id', $appointmentIdsToCheck)->pluck('appointment_id')->all();
-        $unsentAppointments = $appointments->whereNotIn('appointment_id', $sentIds);
+        $appointmentIdsToCheck = $appointmentsInMaxWindow->pluck('appointment_id')->all();
+        $sentIds = SentReminder::whereIn('appointment_id', $appointmentIdsToCheck)
+            ->pluck('appointment_id')
+            ->all();
+        
+        $unsentAppointments = $appointmentsInMaxWindow->whereNotIn('appointment_id', $sentIds);
 
         if ($unsentAppointments->isEmpty()) {
-            $this->info("All appointments in this window have already been reminded.");
+            $this->info("All upcoming confirmed appointments have already been reminded.");
             return self::SUCCESS;
         }
 
-        $this->info("Found {$unsentAppointments->count()} new appointments to remind.");
         $dispatchedCount = 0;
-
         foreach ($unsentAppointments as $appointment) {
+            
             if (empty($appointment->mobile)) {
-                Log::warning("Skipping 24hr reminder for appt #{$appointment->appointment_id} due to missing mobile.");
+                Log::warning("Skipping reminder for appointment #{$appointment->appointment_id} due to missing mobile number.");
+                continue;
+            }
+            
+            $appointmentTime = Carbon::parse($appointment->appointment_date . ' ' . $appointment->appointment_time);
+            $creationTime = Carbon::parse($appointment->created_at);
+
+            if ($creationTime->diffInMinutes($appointmentTime) < 120) {
+                $this->line(".. Skipping last-minute appointment #{$appointment->appointment_id}. Booked too close to appointment time.");
                 continue;
             }
 
-            // --- THIS IS THE NEW LOGIC, MIRRORING THE CONFIRMED REMINDER ---
-            // If we have already dispatched at least one job in this run,
-            // we will pause for a random interval before dispatching the next one.
             if ($dispatchedCount > 0) {
-                $delaySeconds = rand(20, 60); // A shorter delay is fine here
+                $delaySeconds = rand(40, 120);
                 $this->info("... waiting for {$delaySeconds} seconds before next message...");
                 sleep($delaySeconds);
             }
-            // --- END OF NEW LOGIC ---
 
-            // We dispatch the job immediately (no ->delay() needed).
-            // The `sleep()` in the command itself creates the stagger.
-            SendDailyUnconfirmedReminder::dispatch($appointment);
-            $dispatchedCount++;
-            
-            $this->line(" -> Queued reminder for appt #{$appointment->appointment_id}.");
+            // The code below is now safe because we've already filtered for status 1.
+            $status = $appointment->app_status;
+            if (!isset($reminderWindows[$status])) {
+                continue;
+            }
+            $specificWindow = $reminderWindows[$status];
+
+            if ($appointmentTime->isBetween($now, $now->copy()->addMinutes($specificWindow))) {
+                SendSingleReminder::dispatch($appointment);
+                $dispatchedCount++;
+                $this->line(" -> Queued reminder for confirmed appointment #{$appointment->appointment_id}");
+            }
         }
 
-        $logMessage = "24hr Unconfirmed Check: Dispatched {$dispatchedCount} jobs.";
+        $logMessage = "Checked for confirmed appointments. Dispatched {$dispatchedCount} new reminder jobs.";
         $this->info($logMessage);
         Log::info($logMessage);
 
